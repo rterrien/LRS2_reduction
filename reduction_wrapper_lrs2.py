@@ -1023,6 +1023,8 @@ def initial_setup ( DIR_DICT = None, sci_objects = None, redux_dir = None):
     else:
         only_sframes = sframes_orig
         sky_side = None
+        skyframes_orig = []
+        skytimes = []
 
     #Check that data is correct
     if len(spframes_orig) == 0:
