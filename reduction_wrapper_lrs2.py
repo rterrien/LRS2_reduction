@@ -1234,7 +1234,7 @@ def basicred(DIR_DICT, sci_objects, redux_dir, basic = False, dividepf = False,
         print ('* DIVDING BY PIXEL FLAT *')
         print ('*************************')
         for side in SPECBIG:
-            pflat = op.join( pixflatdir, "pixelflat_cam{:03d}_{:s}.fits".format( ucam, side.upper() ) )
+            pflat = op.join( pixflatdir, "pixelflat_cam{:s}_{:s}.fits".format( ucam, side.upper() ) ) # rterrien change 050617
             opt = "--file {:s}".format(pflat)
             dividepixelflat(oframes, opt, side, ucam)
     

@@ -64,6 +64,7 @@ rmCosmics	 	= True  		#[True/False] If True the program L.A.Cosmic is used to el
 #rmCosmics variables
 sigclip 		= 5.0 			# [float] detection limit for cosmic rays (sigma). Increase this if you detect cosmics where there are none (default: 5.0)
 sigfrac 		= 5.0 			# [float] contrast limit between CR and underlying object. Increase this if normal stars are detected as cosmics (default: 5.0)
+objlim          = 3.0           # [float] default value from cosmics [rterrien addition 050617]
 
 #----------------------#
 # sky subtraction opts #
