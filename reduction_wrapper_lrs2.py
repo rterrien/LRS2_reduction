@@ -153,7 +153,7 @@ headfitsopts    = "-m -k EXPTIME -v 1 -V"
 darkopts        = "--maxmem 1024 -s -t -m -k 2.8" 
 arcopts         = "--maxmem 1024 -s -t -m -k 2.8"
 traceopts       = "--maxmem 1024 -s -t -m -k 2.8"
-deformeropts    = "-p 7 -n 4 -C 10 --debug --dump_psf_data"
+deformeropts    = "-p 7 -C 10 --debug --dump_psf_data"
 subskyopts      = "-J --output-both -w "+str(config.window_size)+" -k "+str(config.sky_kappa[0])+','+str(config.sky_kappa[1])+" -m "+str(config.smoothing)+" -T "+str(config.sn_thresh)
 fibextractopts  = "-P"
 cubeopts        = "-a "+str(config.sky_sampling)+" -k "+str(config.max_distance)+" -s "+str(config.cube_sigma)
@@ -591,9 +591,9 @@ def meantracefits(side, specid, dest_dir, basename , opts, frames):
     return command
     
 
-def deformer(mastertrace,masterarc,linesfile,wave_range,ref_line,opts):
+def deformer(mastertrace,masterarc,linesfile,wave_range,ref_line,sigma,opts):
     
-    command = 'deformer %s -s %s -W %s -o \"%s\" -l %s -a %s %s' % (opts,ref_line,wave_range,redux_dir,linesfile,masterarc,mastertrace)  
+    command = 'deformer -I %s,0.0,0.0,2.0 --fix-exp --fix-h2 -P 0,0.5,0.15,1.0 %s -s %s -W %s -o \"%s\" -l %s -a %s %s' % (sigma,opts,ref_line,wave_range,redux_dir,linesfile,masterarc,mastertrace)  
 
     run_cure_command( command, 0 )
 
@@ -713,6 +713,11 @@ def initial_setup ( DIR_DICT = None, sci_objects = None, redux_dir = None):
     aframes = [] # will fill this list with VirusFrame class objects for each image
     #make a list of all fits files in the redux directory 
     date_ims = glob.glob(op.join(config.date_folder,'lrs2/lrs2*/exp*/lrs2/*.fits'))
+
+    #Check that it found files
+    if len(date_ims)==0:
+        sys.exit("Found no files. Check your date_folder path in config")
+
     for f in date_ims:            
         temp, temp1, temp2 = op.basename ( f ).split('_')
         amp                = temp1[3:5]
@@ -843,14 +848,14 @@ def initial_setup ( DIR_DICT = None, sci_objects = None, redux_dir = None):
             amp                = temp1[3:5]
             if amp == "LL":
                 a = VirusFrame( f ) 
-                if a.specid == ('501' or '503'):
+                if (a.specid == '501' or a.specid =='503'):
                     fframes_orig.append(copy.deepcopy(a)) 
                     num = num + 1
 
         print ('Including '+str(num)+' short exposure LDLS flats for orange channel reduction')
 
     else:
-        fframes_orig   = [t for t in tframes if t.type == "flt" and t.object == 'ldls_short'] # gives just "flt" frames
+        fframes_orig   = [t for t in tframes if t.type == "flt" and t.object == 'ldls_long'] # gives just "flt" frames
 
     print ('Found '+str(len(fframes_orig))+' '+FLT_LAMP+' flt frames')
 
@@ -871,6 +876,11 @@ def initial_setup ( DIR_DICT = None, sci_objects = None, redux_dir = None):
     #----------------#
     if ucam == '501':
         cdframes = [t for t in tframes if t.type == "cmp" and t.object == "Cd"] # gives just "Cd" frames
+        #They changed the object for Cd frames to be Cd-A at some point 
+        #added this to make sure they are found for later data
+        cdaframes = [t for t in tframes if t.type == "cmp" and t.object == "Cd-A"] # gives just "Cd-A" frames
+
+        cdframes = cdframes + cdaframes #add both lists together to get Cd frames found with either name 
 
         if len(cdframes) == 0:
             sys.exit("No Cd lamp exposures were found for this night")
@@ -912,6 +922,11 @@ def initial_setup ( DIR_DICT = None, sci_objects = None, redux_dir = None):
     #----------------#
     if ucam == '503':
         cdframes = [t for t in tframes if t.type == "cmp" and t.object == "Cd"] # gives just "Cd" frames
+        #They changed the object for Cd frames to be Cd-A at some point 
+        #added this to make sure they are found for later data
+        cdaframes = [t for t in tframes if t.type == "cmp" and t.object == "Cd-A"] # gives just "Cd-A" frames
+
+        cdframes = cdframes + cdaframes #add both lists together to get Cd frames found with either name 
 
         if len(cdframes) == 0:
             sys.exit("No Cd lamp exposures were found for this night")
@@ -1260,7 +1275,11 @@ def basicred(DIR_DICT, sci_objects, redux_dir, basic = False, dividepf = False,
         for side in SPECBIG:
             for lamp in LAMP_DICT.values():
                 #Creates a masterarc frame for each arc lamp in LAMP_DICT
-                lframesselect = [l for l in lframes if l.object == lamp]
+                #Added if statement to handle the fact that sometimes they call Cd Cd-A in the OBJECT header
+                if lamp == 'Cd':
+                    lframesselect = [l for l in lframes if (l.object == lamp or l.object == 'Cd-A')]
+                else:
+                    lframesselect = [l for l in lframes if l.object == lamp]
                 #If more than one image for that lamp take median image 
                 if len(lframesselect)>1:
                     meanlampfits(side, ucam, lamp, redux_dir, 'masterarc' , arcopts, lframesselect) 
@@ -1401,18 +1420,22 @@ def basicred(DIR_DICT, sci_objects, redux_dir, basic = False, dividepf = False,
             sys.exit("You must run basic reduction before you can run deformer")
 
         for side in SPECBIG:  
-            #selects wavelength range and ref arc line for each channel
+            #selects wavelength range, sigma, and ref arc line for each channel
             if (config.LRS2_spec == 'B') and (side == 'L'):
-                wave_range = '[3600,4700]'
+                wave_range = '3600,4700'
+                sigma = 2.3
                 ref_line = 6
             if (config.LRS2_spec == 'B') and (side == 'R'):
-                wave_range = '[4600,7000]'
+                wave_range = '4600,7000'
+                simga = 2.1
                 ref_line = 7
             if (config.LRS2_spec == 'R') and (side == 'L'):
-                wave_range = '[6500,8500]'
+                wave_range = '6500,8500'
+                sigma = 2.3
                 ref_line = 3
             if (config.LRS2_spec == 'R') and (side == 'R'):
-                wave_range = '[8000,10500]'
+                wave_range = '8000,10500'
+                sigma = 2.5
                 ref_line = 1
             #copy the lines file used to this directory 
             shutil.copy ( op.join(linesdir,'lines' + '_' + side + '_' + ucam +'.par'), op.join(redux_dir,'lines' + '_' + side + '_' + ucam +'.par' ) )
@@ -1420,7 +1443,7 @@ def basicred(DIR_DICT, sci_objects, redux_dir, basic = False, dividepf = False,
             mastertrace = op.join ( redux_dir, 'mastertrace' + '_' + ucam + '_' + side + '.fits' )
             masterarc   = op.join ( redux_dir, 'masterarc' + '_' + ucam + '_' + side + '.fits' )
             linefile    = op.join ( redux_dir, 'lines' + '_' + side + '_' + ucam +'.par' )
-            deformer ( mastertrace, masterarc, linefile, wave_range, ref_line, deformeropts)
+            deformer ( mastertrace, masterarc, linefile, wave_range, ref_line, sigma, deformeropts)
     
     # Run sky subtraction            
     if config.subsky:  
